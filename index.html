@@ -393,9 +393,9 @@
           <input class="filter-input" id="searchInput" placeholder="搜尋使用者..." oninput="renderLogs()">
         </div>
       </div>
-      <div style="overflow-x:auto">
+      <div style="overflow-x:auto;overflow-y:auto;max-height:370px">
         <table class="log-table">
-          <thead>
+          <thead style="position:sticky;top:0;background:var(--surface);z-index:1">
             <tr>
               <th>時間</th>
               <th>類型</th>
@@ -606,7 +606,7 @@ function renderLogs() {
   });
   var tbody = document.getElementById('logBody');
   if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty">無符合紀錄</td></tr>'; return; }
-  tbody.innerHTML = rows.slice(0,30).map(r =>
+  tbody.innerHTML = rows.slice(0,200).map(r =>
     '<tr>' +
     '<td class="log-time">' + r.time.split(' ')[1] + '<br><span style="font-size:10px;color:var(--text-muted)">' + r.time.split(' ')[0] + '</span></td>' +
     '<td><span class="log-type-badge ' + r.type + '">' + r.type + '</span></td>' +
