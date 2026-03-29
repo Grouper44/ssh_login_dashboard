@@ -5,14 +5,17 @@
 #  Action: Collect container CPU/MEM + overall GPU stats, POST once, then exit
 # ================================================================
 
-$SCRIPT_URL = "YOUR_APPS_SCRIPT_URL"
+$SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2Z_XU3fzLHqpLu_BlNEM10_JWXqfLMiGoyCNVaXUP1Dqj7gwTIhiqVnTPYFvdFHs/exec"
+
+$docker     = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+$nvidiaSmi  = "C:\Windows\System32\nvidia-smi.exe"
 
 try {
     # ── 抓所有執行中容器的 CPU / MEM ──────────────────────────
-    $statsRaw = docker stats --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}" 2>$null
+    $statsRaw = & $docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemPerc}}" 2>$null
     $containerStats = @{}
     foreach ($line in $statsRaw) {
-        $parts = $line -split '\t'
+        $parts = $line -split '\|'
         if ($parts.Count -lt 3) { continue }
         $name   = $parts[0].Trim()
         $cpu    = [math]::Round([double]($parts[1].Trim().TrimEnd('%')), 1)
@@ -22,7 +25,7 @@ try {
 
     # ── 抓整體 GPU 使用率 ─────────────────────────────────────
     $gpuUtil = 0
-    $nvOut = nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>$null
+    $nvOut = & $nvidiaSmi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>$null
     if ($nvOut) {
         $vals = @($nvOut | ForEach-Object { [int]$_.Trim() })
         if ($vals.Count -gt 0) {

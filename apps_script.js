@@ -8,9 +8,10 @@ function doPost(e) {
   // JSON body（docker_stats_webhook.ps1）或 form-encoded（其他腳本）皆支援
   var bodyJson = {};
   try { if (e.postData && e.postData.type === 'application/json') bodyJson = JSON.parse(e.postData.contents); } catch(err) {}
-  var action    = e.parameter.action    || bodyJson.action || "login";
-  var user      = e.parameter.user      || "Unknown User";
-  var ip        = e.parameter.ip        || "Unknown IP";
+  var params   = e.parameter || {};
+  var action    = params.action    || bodyJson.action || "login";
+  var user      = params.user      || "Unknown User";
+  var ip        = params.ip        || "Unknown IP";
   var timestamp = Utilities.formatDate(new Date(), "GMT+8", "yyyy-MM-dd HH:mm:ss");
 
   // ── 登出紀錄 ──────────────────────────────────────
@@ -258,7 +259,7 @@ function getDataPayload() {
       status = 'stopped';
     }
 
-    return { name: c.name, owner: c.owner, status: status, cpu: 0, mem: 0, gpu: 0 };
+    return { name: c.name, owner: c.owner, status: status, cpu: 0, mem: 0, gpu: 0, _ownerKey: c.owner };
   });
 
   // ── 統計 ──
@@ -304,8 +305,9 @@ function getDataPayload() {
   } catch(e) {}
 
   // 將 CPU/MEM 合併進容器清單，GPU 用整體值填入
+  // statsMap key 是容器名稱（TJ_Con 等），containerMap key 是容器 ID，用 owner 對應
   containers = containers.map(function(c) {
-    var s = statsMap[c.name] || {};
+    var s = statsMap[c.owner] || statsMap[c.name] || {};
     return {
       name:   c.name,
       owner:  c.owner,

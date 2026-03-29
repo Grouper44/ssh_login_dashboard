@@ -253,7 +253,9 @@ var CHAT_ID        = "你的 Chat ID";
 2. **`apps_script.js`**
    - `doPost` 支援 JSON body（`Content-Type: application/json`），action 從 body 讀取
    - 新增 `action=stats` 處理：用 `PropertiesService` 儲存最新一筆，不寫入 Sheets
-   - `doGet` / `getDataPayload()` 讀取最新 stats，將 CPU/MEM 合併進各容器、GPU 整體值加入回傳 JSON（`gpuUtil` 欄位）
+   - `getDataPayload()` 讀取最新 stats，用 `c.owner`（容器名稱）對應 statsMap，修正容器 ID 與容器名稱不一致導致 CPU/MEM 永遠為 0 的問題
+   - GPU 整體值加入回傳 JSON（`gpuUtil` 欄位）
+   - `doPost` 新增 `var params = e.parameter || {}` 保護，避免 JSON body 請求時報錯
 
 3. **`index.html`**
    - 頂部第四個 metric 卡片從「本週總工時」改為「GPU 使用率」（顯示整體平均 %）
@@ -261,7 +263,8 @@ var CHAT_ID        = "你的 Chat ID";
 
 **Task Scheduler 設定：**
 - 任務名稱：`Docker_Stats_Logger`
-- 觸發：每天，重複間隔 1 分鐘，持續 1 天
+- 觸發：每天，重複間隔 5 分鐘，持續無限期
+- 執行身分：SYSTEM
 - 動作：`powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\Public\docker_stats_webhook.ps1"`
 
 ### 2026-03-26：最近紀錄表格改為捲軸顯示
