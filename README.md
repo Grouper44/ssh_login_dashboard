@@ -1,4 +1,4 @@
-# 研究室伺服器監控系統 文件
+# 研究室伺服器監控系統
 
 ## 系統架構概覽
 
@@ -48,7 +48,32 @@ GitHub Pages (index.html)  ← 管理員監控介面
 
 ---
 
-## 一、SSH 登入觸發機制
+## 一、SSH 連線方式
+
+### 前提條件
+
+- 已安裝 Tailscale 並加入研究室網路（請聯絡管理員）
+- 已安裝 VS Code 擴充套件：Remote - SSH、Dev Containers
+
+### 連線步驟
+
+1. 確認 Tailscale 已開啟且成功連線。
+2. 打開 VS Code，點左側 Remote Explorer，新增 SSH 連線：
+
+```bash
+ssh labuser@<Tailscale IP>   # IP 請向管理員取得
+```
+
+3. 連線成功後，VS Code 左下角會顯示 `SSH: <IP>`。
+
+### 進入 Docker 容器
+
+1. 點 VS Code 左下角綠色 `><` 圖示。
+2. 選擇 **Attach to Running Container...**，選擇你的容器（`Jane_Con`、`Ting_Con`、`TJ_Con`、`SPY_Con`）。
+
+---
+
+## 二、SSH 登入觸發機制
 
 ### 排程任務：SSH_Login_Logger
 
@@ -69,7 +94,7 @@ $SCRIPT_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
 
 ---
 
-## 二、Docker 容器進入觸發機制
+## 三、Docker 容器進入觸發機制
 
 ### 容器內 /root/.bashrc
 
@@ -104,7 +129,7 @@ foreach ($con in @("TJ_Con", "Ting_Con", "Jane_Con", "SPY_Con")) {
 
 ---
 
-## 三、Google Apps Script
+## 四、Google Apps Script
 
 ### 設定項目
 
@@ -125,14 +150,12 @@ var CHAT_ID        = "你的 Chat ID";
 | `container` / `container_login` | 容器連線 | 容器進入紀錄 |
 | `stats` | 容器資源數據（JSON body） | PropertiesService（只保留最新一筆，不寫 Sheets） |
 
-> 登出、心跳相關 action 已移除，不再使用。
-
 ### doGet 回傳的 JSON 結構
 
 ```json
 {
   "logs": [
-    { "time": "2026-03-25 16:48:41", "type": "ssh|container", "user": "labuser", "ip": "100.118.216.122" }
+    { "time": "2026-03-25 16:48:41", "type": "ssh|container", "user": "labuser", "ip": "1.2.3.4" }
   ],
   "online": [
     { "name": "SPY_Con", "ip": "d455ff67a2b2", "type": "container", "duration": "14m" }
@@ -141,9 +164,9 @@ var CHAT_ID        = "你的 Chat ID";
     { "name": "d455ff67a2b2", "owner": "SPY_Con", "status": "active|idle|stopped", "cpu": 12.5, "mem": 34.2, "gpu": 67 }
   ],
   "gpuUtil": 67,
-  "hourStats": [0,0,0,...],
+  "hourStats": [0,0,0],
   "userStats": { "labels": ["SPY_Con","TJ_Con"], "data": [19, 2] },
-  "weekStats": { "labels": ["Mon","Tue",...], "data": [12,18,...] }
+  "weekStats": { "labels": ["Mon","Tue"], "data": [12,18] }
 }
 ```
 
@@ -158,7 +181,7 @@ var CHAT_ID        = "你的 Chat ID";
 
 ---
 
-## 四、前端介面
+## 五、前端介面
 
 **部署位置：** GitHub Pages
 **網址：** `https://grouper44.github.io/ssh_login_dashboard`
@@ -170,7 +193,7 @@ var CHAT_ID        = "你的 Chat ID";
 | 頂部 Topbar | 即時時鐘、手動重新整理 |
 | 4 個 Metric 卡片 | 目前在線人數、今日登入次數、活躍容器數、GPU 整體使用率 |
 | 目前在線清單 | 顯示在線使用者、連線 IP、類型（SSH/容器）、連線時長 |
-| 最近紀錄表格 | 可過濾 SSH/容器、搜尋使用者；固定高度顯示約 10 筆，可捲動查看最多 200 筆歷史紀錄，欄位標題固定 |
+| 最近紀錄表格 | 可過濾 SSH/容器、搜尋使用者；固定高度顯示約 10 筆，可捲動查看最多 200 筆 |
 | 24 小時登入分布圖 | 長條圖，顯示今日各小時登入次數 |
 | 使用者使用量圖 | 橫條圖，只統計容器使用次數（排除 labuser） |
 | 容器狀態卡片 | 每個容器的名稱、擁有者、active/idle/stopped 狀態、CPU%、MEM%、GPU%（整體） |
@@ -188,7 +211,7 @@ var CHAT_ID        = "你的 Chat ID";
 
 ---
 
-## 五、Google Sheets 結構
+## 六、Google Sheets 結構
 
 ### 工作表1（SSH 登入）
 
@@ -208,7 +231,7 @@ var CHAT_ID        = "你的 Chat ID";
 
 ---
 
-## 六、Telegram 通知
+## 七、Telegram 通知
 
 | 事件 | 通知內容 |
 |------|---------|
@@ -217,19 +240,18 @@ var CHAT_ID        = "你的 Chat ID";
 
 ---
 
-## 七、已知限制
+## 八、已知限制
 
 | 項目 | 限制 |
 |------|------|
 | 容器 GPU | 顯示整體 GPU 平均使用率，無法區分各容器個別使用量（Windows 上 PID namespace 對應困難） |
-| 本週總工時 | 因無精確連線時長，已移除此統計 |
 | SSH 使用者識別 | 所有人共用 `labuser` 帳號，無法區分個人 |
 | 容器 throttle 重置 | 容器重啟後 `/tmp/con_gate` 消失，下次進入會立即送出（正常行為） |
 | stats 更新頻率 | 每 1 分鐘更新一次，前端 60 秒刷新，最大誤差約 2 分鐘 |
 
 ---
 
-## 八、後續可擴充的功能
+## 九、後續可擴充的功能
 
 - **個人 SSH 帳號**：為每位研究生建立獨立帳號，改善在線識別準確度
 - **每日報表**：用 Apps Script 的 Time-driven Trigger，每天早上自動發送昨日使用統計到 Telegram
@@ -238,11 +260,9 @@ var CHAT_ID        = "你的 Chat ID";
 
 ---
 
-## 九、變更紀錄
+## 十、變更紀錄
 
 ### 2026-03-30：新增資源監測（CPU / MEM / GPU）
-
-**新增內容：**
 
 1. **`docker_stats_webhook.ps1`**（新增）
    - Windows Task Scheduler 每 1 分鐘觸發一次，執行完畢即結束，不常駐
@@ -253,46 +273,35 @@ var CHAT_ID        = "你的 Chat ID";
 2. **`apps_script.js`**
    - `doPost` 支援 JSON body（`Content-Type: application/json`），action 從 body 讀取
    - 新增 `action=stats` 處理：用 `PropertiesService` 儲存最新一筆，不寫入 Sheets
-   - `getDataPayload()` 讀取最新 stats，用 `c.owner`（容器名稱）對應 statsMap，修正容器 ID 與容器名稱不一致導致 CPU/MEM 永遠為 0 的問題
+   - `getDataPayload()` 讀取最新 stats，用 `c.owner`（容器名稱）對應 statsMap
    - GPU 整體值加入回傳 JSON（`gpuUtil` 欄位）
-   - `doPost` 新增 `var params = e.parameter || {}` 保護，避免 JSON body 請求時報錯
 
 3. **`index.html`**
-   - 頂部第四個 metric 卡片從「本週總工時」改為「GPU 使用率」（顯示整體平均 %）
-   - 容器卡片固定顯示 CPU / MEM / GPU 三欄（GPU 為整體值）
+   - 頂部第四個 metric 卡片從「本週總工時」改為「GPU 使用率」
+   - 容器卡片固定顯示 CPU / MEM / GPU 三欄
 
 **Task Scheduler 設定：**
 - 任務名稱：`Docker_Stats_Logger`
-- 觸發：每天，重複間隔 5 分鐘，持續無限期
+- 觸發：每天，重複間隔 1 分鐘，持續無限期
 - 執行身分：SYSTEM
 - 動作：`powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\Public\docker_stats_webhook.ps1"`
 
 ### 2026-03-26：最近紀錄表格改為捲軸顯示
-
-**修改內容：**
 
 1. **`index.html`**
    - 最近紀錄區塊加入固定高度（約 10 筆）與垂直捲軸
    - 欄位標題固定在頂部，捲動時不消失
    - 顯示上限從 30 筆擴大為 200 筆
 
-**問題：** SSH 和 Docker 容器登入紀錄大量重複寫入，且系統被改成需要常駐 PowerShell 才能運作。
+2. **`ssh_webhook.ps1`**
+   - 還原為輕量版：由排程任務在 EventID=4 時觸發，送一次後結束，不再常駐
 
-**修改內容：**
+3. **`apps_script.js`**
+   - 新增 `isThrottled()`：同一 `user+ip` 60 秒內重複送達直接擋下
 
-1. **`ssh_webhook.ps1`**
-   - 還原為輕量版：由 Windows 排程任務 `SSH_Login_Logger` 在 OpenSSH EventID=4 時觸發，送一次 webhook 後結束，不再常駐
-   - 移除 SSHMonitor、DockerMonitor、Heartbeat 三個背景 job
+4. **各容器 `/root/.bashrc`**
+   - throttle 時間從 10 秒改為 60 秒
 
-2. **`apps_script.js`**
-   - 新增 `isThrottled()` 函式：同一 `user+ip` 在 60 秒內重複送達直接擋下，不寫入 Sheets 也不發 Telegram
-   - 套用於 SSH 登入（工作表1）和容器進入（容器進入紀錄）
+### 2026-03-25：初版上線
 
-3. **各容器 `/root/.bashrc`**
-   - 將 throttle 時間從 10 秒改為 60 秒
-
-### 2026-03-25：容器離線偵測改善（已被上方架構簡化取代）
-
-- DockerMonitor 新增 `exec_die` 事件監聽
-- Heartbeat 改用 `docker top` 檢查 active shell session
-- 容器在線寬限時間從 30 分鐘縮短為 15 分鐘
+- SSH 登入觸發、容器進入通知、Telegram 通知、前端監控介面
