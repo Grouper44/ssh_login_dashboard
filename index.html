@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>研究室伺服器監控</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0e14;
+    --surface: #131720;
+    --surface2: #1a2030;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --green: #00e87a;
+    --green-dim: rgba(0,232,122,0.12);
+    --green-glow: rgba(0,232,122,0.25);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Plus Jakarta Sans', sans-serif;
+  }
+  html { font-size: 14px; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* ── Layout ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--green);
+    letter-spacing: 0.02em;
+  }
+  .logo span { color: var(--text-muted); }
+  .badge-live {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--green-dim);
+    border: 1px solid rgba(0,232,122,0.3);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    color: var(--green);
+    font-family: var(--mono);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .topbar-right { display: flex; align-items: center; gap: 20px; }
+  .clock { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .btn-refresh {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text-dim);
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--sans);
+    display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s;
+  }
+  .btn-refresh:hover { border-color: var(--green); color: var(--green); }
+  .config-notice {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--amber);
+    margin-bottom: 24px;
+  }
+  .config-notice input {
+    flex: 1;
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    outline: none;
+  }
+  .config-notice input:focus { border-color: var(--amber); }
+  .btn-sm {
+    background: rgba(245,158,11,0.15);
+    border: 1px solid rgba(245,158,11,0.35);
+    color: var(--amber);
+    padding: 4px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--sans);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-sm:hover { background: rgba(245,158,11,0.25); }
+
+  main { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Metric Cards ── */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .metric.green::before { background: var(--green); }
+  .metric.blue::before { background: var(--blue); }
+  .metric.amber::before { background: var(--amber); }
+  .metric.red::before { background: var(--red); }
+  .metric-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 10px; }
+  .metric-value { font-size: 30px; font-weight: 600; line-height: 1; margin-bottom: 6px; }
+  .metric.green .metric-value { color: var(--green); }
+  .metric.blue .metric-value { color: var(--blue); }
+  .metric.amber .metric-value { color: var(--amber); }
+  .metric.red .metric-value { color: var(--red); }
+  .metric-sub { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+  /* ── Grid Layout ── */
+  .grid-main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title .icon { font-size: 14px; }
+  .panel-body { padding: 16px 18px; }
+
+  /* ── Online List ── */
+  .online-list { display: flex; flex-direction: column; gap: 8px; }
+  .online-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: border-color 0.15s;
+  }
+  .online-item:hover { border-color: var(--border2); }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; flex-shrink: 0;
+  }
+  .avatar.green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,232,122,0.25); }
+  .avatar.blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.25); }
+  .avatar.amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
+  .online-info { flex: 1; min-width: 0; }
+  .online-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .online-detail { font-size: 10px; font-family: var(--mono); color: var(--text-muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .online-status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .status-badge {
+    font-size: 9px; font-family: var(--mono);
+    padding: 2px 7px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .status-badge.ssh { background: var(--green-dim); color: var(--green); }
+  .status-badge.container { background: var(--blue-dim); color: var(--blue); }
+  .duration { font-size: 10px; font-family: var(--mono); color: var(--text-muted); }
+
+  /* ── Log Table ── */
+  .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .log-table th {
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; font-weight: 500; color: var(--text-muted);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .log-type { display: inline-flex; align-items: center; gap: 5px; }
+  .log-type-badge {
+    font-size: 9px; font-family: var(--mono);
+    padding: 2px 6px; border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .log-type-badge.ssh { background: var(--green-dim); color: var(--green); }
+  .log-type-badge.container { background: var(--blue-dim); color: var(--blue); }
+  .log-time { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .log-user { font-weight: 500; color: var(--text); }
+  .log-ip { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+  /* ── Chart Wrapper ── */
+  .chart-wrap { position: relative; width: 100%; height: 220px; }
+
+  /* ── Container Panel ── */
+  .container-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .container-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 13px;
+  }
+  .container-card.active { border-color: rgba(0,232,122,0.25); }
+  .container-card.idle { border-color: rgba(245,158,11,0.15); }
+  .container-card.stopped { border-color: var(--border); opacity: 0.6; }
+  .c-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .c-name { font-size: 12px; font-weight: 500; color: var(--text); }
+  .c-status {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .c-status.active { background: var(--green); box-shadow: 0 0 6px var(--green-glow); }
+  .c-status.idle { background: var(--amber); }
+  .c-status.stopped { background: var(--text-muted); }
+  .c-owner { font-size: 10px; font-family: var(--mono); color: var(--text-muted); margin-bottom: 8px; }
+  .c-stats { display: flex; gap: 10px; }
+  .c-stat { flex: 1; }
+  .c-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 2px; }
+  .c-stat-value { font-size: 12px; font-family: var(--mono); color: var(--text-dim); }
+  .c-bar { height: 2px; background: var(--border); border-radius: 1px; margin-top: 4px; overflow: hidden; }
+  .c-bar-fill { height: 100%; border-radius: 1px; transition: width 0.5s; }
+  .c-bar-fill.green { background: var(--green); }
+  .c-bar-fill.amber { background: var(--amber); }
+  .c-bar-fill.blue { background: var(--blue); }
+
+  /* ── Filter Bar ── */
+  .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .filter-btn {
+    background: transparent; border: 1px solid var(--border2); color: var(--text-muted);
+    padding: 4px 12px; border-radius: 5px; font-size: 11px; font-family: var(--sans);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn.active, .filter-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+  .filter-input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 4px 10px; font-size: 11px; font-family: var(--mono); color: var(--text);
+    outline: none; width: 160px;
+  }
+  .filter-input:focus { border-color: var(--border2); }
+  .filter-input::placeholder { color: var(--text-muted); }
+
+  /* ── Section Title ── */
+  .section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-muted); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Misc ── */
+  .empty { text-align: center; padding: 30px; font-size: 12px; color: var(--text-muted); }
+  .tag-count {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 7px; font-size: 10px;
+    font-family: var(--mono); color: var(--text-muted);
+  }
+  @media (max-width: 1100px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .grid-main { grid-template-columns: 1fr; }
+    .grid-charts { grid-template-columns: 1fr; }
+    .container-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">lab<span>/</span>monitor</div>
+    <div class="badge-live"><div class="dot"></div> LIVE</div>
+  </div>
+  <div class="topbar-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <button class="btn-refresh" onclick="loadData()">↻ 重新整理</button>
+  </div>
+</div>
+
+<main>
+  <!-- ── Config Notice ── -->
+  <div class="config-notice" id="configNotice">
+    <span>⚙</span>
+    <span style="white-space:nowrap">Apps Script URL：</span>
+    <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec" />
+    <button class="btn-sm" onclick="saveConfig()">儲存並連線</button>
+    <button class="btn-sm" style="background:transparent;border-color:rgba(245,158,11,0.2);color:var(--text-muted)" onclick="useDemoData()">使用示範資料</button>
+  </div>
+
+  <!-- ── Metrics ── -->
+  <div class="metrics">
+    <div class="metric green">
+      <div class="metric-label">目前在線</div>
+      <div class="metric-value" id="metOnline">3</div>
+      <div class="metric-sub" id="metOnlineSub">SSH + Container</div>
+    </div>
+    <div class="metric blue">
+      <div class="metric-label">今日登入次數</div>
+      <div class="metric-value" id="metToday">24</div>
+      <div class="metric-sub" id="metTodaySub">較昨日 +6</div>
+    </div>
+    <div class="metric amber">
+      <div class="metric-label">活躍容器</div>
+      <div class="metric-value" id="metContainers">5</div>
+      <div class="metric-sub">共 8 個容器</div>
+    </div>
+    <div class="metric red">
+      <div class="metric-label">GPU 使用率</div>
+      <div class="metric-value" id="metGpu">0</div>
+      <div class="metric-sub" id="metGpuSub">% 整體平均</div>
+    </div>
+  </div>
+
+  <!-- ── Online + Recent Logs ── -->
+  <div class="grid-main">
+
+    <!-- Online Now -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">◉</span> 目前在線</div>
+        <span class="tag-count" id="onlineCount">3</span>
+      </div>
+      <div class="panel-body">
+        <div class="online-list" id="onlineList"></div>
+      </div>
+    </div>
+
+    <!-- Recent Logs -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">▦</span> 最近紀錄</div>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="setFilter('all', this)">全部</button>
+          <button class="filter-btn" onclick="setFilter('ssh', this)">SSH</button>
+          <button class="filter-btn" onclick="setFilter('container', this)">容器</button>
+          <input class="filter-input" id="searchInput" placeholder="搜尋使用者..." oninput="renderLogs()">
+        </div>
+      </div>
+      <div style="overflow-x:auto;overflow-y:auto;max-height:370px">
+        <table class="log-table">
+          <thead style="position:sticky;top:0;background:var(--surface);z-index:1">
+            <tr>
+              <th>時間</th>
+              <th>類型</th>
+              <th>使用者</th>
+              <th>IP / 容器</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Charts ── -->
+  <div class="grid-charts">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">◫</span> 24 小時登入分布</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="chartHour"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">◫</span> 使用者使用量（本週）</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="chartUser"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Container Management ── -->
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-header">
+      <div class="panel-title"><span class="icon">⬡</span> 容器狀態</div>
+      <span class="tag-count" id="containerCount">8 個容器</span>
+    </div>
+    <div class="panel-body">
+      <div class="container-grid" id="containerGrid"></div>
+    </div>
+  </div>
+
+  <!-- ── Weekly Trend ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title"><span class="icon">◫</span> 7 天登入趨勢</div>
+    </div>
+    <div class="panel-body">
+      <div style="position:relative;width:100%;height:180px"><canvas id="chartWeek"></canvas></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+var SCRIPT_URL = localStorage.getItem('labMonitorUrl') || '';
+var activeFilter = 'all';
+var allLogs = [];
+
+function saveConfig() {
+  var url = document.getElementById('scriptUrl').value.trim();
+  if (!url) return;
+  SCRIPT_URL = url;
+  localStorage.setItem('labMonitorUrl', url);
+  loadData();
+}
+
+function useDemoData() {
+  document.getElementById('configNotice').style.display = 'none';
+  loadDemoData();
+}
+
+// ─────────────────────────────────────────────
+//  CLOCK
+// ─────────────────────────────────────────────
+function tick() {
+  var now = new Date();
+  var pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+}
+setInterval(tick, 1000); tick();
+
+// ─────────────────────────────────────────────
+//  DEMO DATA
+// ─────────────────────────────────────────────
+var DEMO_ONLINE = [
+  { name: 'wei_chen',  initials: 'WC', color: 'green',  ip: '140.116.82.45',    type: 'ssh',       duration: '2h 14m', container: null },
+  { name: 'yuki_lin',  initials: 'YL', color: 'blue',   ip: 'gpu-container-03', type: 'container', duration: '45m',    container: 'pytorch-env' },
+  { name: 'ming_tsai', initials: 'MT', color: 'amber',  ip: '140.116.82.51',    type: 'ssh',       duration: '18m',    container: null },
+];
+
+var DEMO_LOGS = [
+  { time: '2025-01-15 14:32:11', type: 'container', user: 'yuki_lin',  ip: 'gpu-container-03' },
+  { time: '2025-01-15 14:18:44', type: 'ssh',       user: 'ming_tsai', ip: '140.116.82.51'    },
+  { time: '2025-01-15 12:05:03', type: 'ssh',       user: 'wei_chen',  ip: '140.116.82.45'    },
+  { time: '2025-01-15 11:47:22', type: 'container', user: 'bo_huang',  ip: 'cpu-container-01' },
+  { time: '2025-01-15 10:30:08', type: 'ssh',       user: 'yuki_lin',  ip: '140.116.82.55'    },
+  { time: '2025-01-15 09:58:31', type: 'container', user: 'wei_chen',  ip: 'gpu-container-02' },
+  { time: '2025-01-15 09:22:17', type: 'ssh',       user: 'chen_kai',  ip: '140.116.82.48'    },
+  { time: '2025-01-15 08:45:00', type: 'container', user: 'bo_huang',  ip: 'gpu-container-04' },
+  { time: '2025-01-14 22:12:33', type: 'ssh',       user: 'yuki_lin',  ip: '140.116.82.55'    },
+  { time: '2025-01-14 21:03:19', type: 'container', user: 'ming_tsai', ip: 'gpu-container-01' },
+  { time: '2025-01-14 19:44:07', type: 'ssh',       user: 'chen_kai',  ip: '140.116.82.48'    },
+  { time: '2025-01-14 17:28:55', type: 'container', user: 'wei_chen',  ip: 'gpu-container-02' },
+];
+
+var DEMO_CONTAINERS = [
+  { name: 'gpu-container-01', owner: 'ming_tsai', status: 'active', cpu: 78, mem: 62, gpu: 91 },
+  { name: 'gpu-container-02', owner: 'wei_chen',  status: 'active', cpu: 45, mem: 38, gpu: 55 },
+  { name: 'gpu-container-03', owner: 'yuki_lin',  status: 'active', cpu: 88, mem: 71, gpu: 83 },
+  { name: 'gpu-container-04', owner: 'bo_huang',  status: 'idle',   cpu: 12, mem: 28, gpu:  8 },
+  { name: 'cpu-container-01', owner: 'bo_huang',  status: 'active', cpu: 55, mem: 44, gpu:  0 },
+  { name: 'cpu-container-02', owner: 'chen_kai',  status: 'idle',   cpu:  5, mem: 18, gpu:  0 },
+  { name: 'dev-container-01', owner: 'yuki_lin',  status: 'stopped', cpu: 0, mem:  0, gpu:  0 },
+  { name: 'dev-container-02', owner: 'ming_tsai', status: 'stopped', cpu: 0, mem:  0, gpu:  0 },
+];
+
+var DEMO_HOUR = [0,0,0,0,0,0,1,2,5,8,7,6,4,3,5,7,8,6,4,3,2,1,0,0];
+var DEMO_USER = { labels: ['wei_chen','yuki_lin','ming_tsai','bo_huang','chen_kai'], data: [42,38,27,21,15] };
+var DEMO_WEEK = { labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], data: [12,18,15,22,20,8,5] };
+
+function loadDemoData() {
+  allLogs = DEMO_LOGS;
+  renderOnline(DEMO_ONLINE);
+  renderLogs();
+  renderContainers(DEMO_CONTAINERS);
+  updateMetrics();
+  renderCharts();
+}
+
+// ─────────────────────────────────────────────
+//  REAL DATA FETCH
+// ─────────────────────────────────────────────
+async function loadData() {
+  if (!SCRIPT_URL) { loadDemoData(); return; }
+  document.getElementById('configNotice').style.display = 'none';
+  try {
+    var r = await fetch(SCRIPT_URL + '?action=getData');
+    var d = await r.json();
+    allLogs = d.logs || [];
+    renderOnline(d.online || []);
+    renderLogs();
+    renderContainers(d.containers || []);
+    updateMetrics(d.gpuUtil);
+    renderCharts(d.hourStats, d.userStats, d.weekStats);
+  } catch (e) {
+    console.warn('Fetch failed, using demo data', e);
+    loadDemoData();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  RENDER: ONLINE
+// ─────────────────────────────────────────────
+var colors = ['green','blue','amber','red'];
+function getColor(name) {
+  var h = 0; for (var c of name) h = (h*31 + c.charCodeAt(0)) & 0xff;
+  return colors[h % colors.length];
+}
+function getInitials(name) {
+  var p = name.split('_'); return (p[0][0] + (p[1] ? p[1][0] : p[0][1])).toUpperCase();
+}
+
+function renderOnline(online) {
+  var el = document.getElementById('onlineList');
+  document.getElementById('onlineCount').textContent = online.length;
+  if (!online.length) { el.innerHTML = '<div class="empty">目前無人在線</div>'; return; }
+  el.innerHTML = online.map(u => {
+    var color = u.color || getColor(u.name);
+    var initials = u.initials || getInitials(u.name);
+    return '<div class="online-item">' +
+      '<div class="avatar ' + color + '">' + initials + '</div>' +
+      '<div class="online-info">' +
+        '<div class="online-name">' + u.name + '</div>' +
+        '<div class="online-detail">' + u.ip + (u.container ? ' → ' + u.container : '') + '</div>' +
+      '</div>' +
+      '<div class="online-status">' +
+        '<div class="status-badge ' + u.type + '">' + u.type + '</div>' +
+        '<div class="duration">' + u.duration + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ─────────────────────────────────────────────
+//  RENDER: LOGS
+// ─────────────────────────────────────────────
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLogs();
+}
+
+function renderLogs() {
+  var search = (document.getElementById('searchInput').value || '').toLowerCase();
+  var rows = allLogs.filter(r => {
+    if (activeFilter !== 'all' && r.type !== activeFilter) return false;
+    if (search && !r.user.toLowerCase().includes(search) && !r.ip.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  var tbody = document.getElementById('logBody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty">無符合紀錄</td></tr>'; return; }
+  tbody.innerHTML = rows.slice(0,200).map(r =>
+    '<tr>' +
+    '<td class="log-time">' + r.time.split(' ')[1] + '<br><span style="font-size:10px;color:var(--text-muted)">' + r.time.split(' ')[0] + '</span></td>' +
+    '<td><span class="log-type-badge ' + r.type + '">' + r.type + '</span></td>' +
+    '<td class="log-user">' + r.user + '</td>' +
+    '<td class="log-ip">' + r.ip + '</td>' +
+    '</tr>'
+  ).join('');
+}
+
+// ─────────────────────────────────────────────
+//  RENDER: CONTAINERS
+// ─────────────────────────────────────────────
+function renderContainers(containers) {
+  var el = document.getElementById('containerGrid');
+  var active = containers.filter(c => c.status === 'active').length;
+  document.getElementById('containerCount').textContent = active + ' 活躍 / ' + containers.length + ' 個';
+  el.innerHTML = containers.map(c =>
+    '<div class="container-card ' + c.status + '">' +
+    '<div class="c-header"><div class="c-name">' + c.name + '</div><div class="c-status ' + c.status + '"></div></div>' +
+    '<div class="c-owner">⊂ ' + c.owner + '</div>' +
+    (c.status !== 'stopped' ?
+      '<div class="c-stats">' +
+        makeCStat('CPU', c.cpu, 'green') +
+        makeCStat('MEM', c.mem, 'blue') +
+        makeCStat('GPU', c.gpu, 'amber') +
+      '</div>' : '<div style="font-size:10px;color:var(--text-muted)">已停止</div>')
+    + '</div>'
+  ).join('');
+}
+function makeCStat(label, val, color) {
+  return '<div class="c-stat">' +
+    '<div class="c-stat-label">' + label + '</div>' +
+    '<div class="c-stat-value">' + val + '%</div>' +
+    '<div class="c-bar"><div class="c-bar-fill ' + color + '" style="width:' + val + '%"></div></div>' +
+    '</div>';
+}
+
+// ─────────────────────────────────────────────
+//  METRICS
+// ─────────────────────────────────────────────
+function updateMetrics(gpuUtil) {
+  var today = new Date().toISOString().slice(0,10);
+  var todayCount = allLogs.filter(r => r.time.startsWith(today)).length;
+  document.getElementById('metToday').textContent = todayCount || 24;
+  if (gpuUtil !== undefined) {
+    document.getElementById('metGpu').textContent = gpuUtil;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CHARTS
+// ─────────────────────────────────────────────
+var chartInstances = {};
+function destroyChart(id) { if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; } }
+
+function renderCharts(hourStats, userStats, weekStats) {
+  hourStats = hourStats || DEMO_HOUR;
+  userStats = userStats || DEMO_USER;
+  weekStats = weekStats || DEMO_WEEK;
+
+  var textMuted = '#64748b';
+  var border = 'rgba(255,255,255,0.06)';
+
+  // Hour chart
+  destroyChart('hour');
+  chartInstances.hour = new Chart(document.getElementById('chartHour'), {
+    type: 'bar',
+    data: {
+      labels: Array.from({length:24}, (_,i) => i + ':00'),
+      datasets: [{
+        data: hourStats,
+        backgroundColor: hourStats.map(v => v > 5 ? 'rgba(0,232,122,0.7)' : 'rgba(0,232,122,0.25)'),
+        borderRadius: 3, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' 次' } } },
+      scales: {
+        x: { grid: { color: border }, ticks: { color: textMuted, font: { family: 'JetBrains Mono', size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } },
+        y: { grid: { color: border }, ticks: { color: textMuted, font: { family: 'JetBrains Mono', size: 10 }, stepSize: 2 }, beginAtZero: true }
+      }
+    }
+  });
+
+  // User chart
+  destroyChart('user');
+  chartInstances.user = new Chart(document.getElementById('chartUser'), {
+    type: 'bar',
+    data: {
+      labels: userStats.labels,
+      datasets: [{
+        data: userStats.data,
+        backgroundColor: ['rgba(0,232,122,0.7)','rgba(59,130,246,0.7)','rgba(245,158,11,0.7)','rgba(168,85,247,0.7)','rgba(236,72,153,0.7)'],
+        borderRadius: 3, borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' 次' } } },
+      scales: {
+        x: { grid: { color: border }, ticks: { color: textMuted, font: { family: 'JetBrains Mono', size: 10 } }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } } }
+      }
+    }
+  });
+
+  // Week chart
+  destroyChart('week');
+  chartInstances.week = new Chart(document.getElementById('chartWeek'), {
+    type: 'line',
+    data: {
+      labels: weekStats.labels,
+      datasets: [{
+        data: weekStats.data,
+        borderColor: '#00e87a', borderWidth: 2,
+        backgroundColor: 'rgba(0,232,122,0.06)',
+        pointBackgroundColor: '#00e87a', pointRadius: 4, fill: true, tension: 0.35,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' 次登入' } } },
+      scales: {
+        x: { grid: { color: border }, ticks: { color: textMuted, font: { family: 'JetBrains Mono', size: 11 } } },
+        y: { grid: { color: border }, ticks: { color: textMuted, font: { family: 'JetBrains Mono', size: 11 } }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+if (SCRIPT_URL) {
+  document.getElementById('scriptUrl').value = SCRIPT_URL;
+  document.getElementById('configNotice').style.display = 'none';
+  loadData();
+} else {
+  loadDemoData();
+}
+
+setInterval(() => { if (SCRIPT_URL) loadData(); }, 60000);
+</script>
+</body>
+</html>
