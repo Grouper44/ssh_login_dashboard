@@ -630,7 +630,7 @@ function renderContainers(containers) {
     (c.status !== 'stopped' ?
       '<div class="c-stats">' +
         makeCStat('CPU', c.cpu, 'green') +
-        makeCStat('MEM', c.mem, 'blue') +
+        makeCStat('RAM', c.mem, 'blue') +
         makeCStat('GPU', c.gpu, 'amber') +
       '</div>' : '<div style="font-size:10px;color:var(--text-muted)">已停止</div>')
     + '</div>'
