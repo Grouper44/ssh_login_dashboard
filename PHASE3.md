@@ -46,10 +46,18 @@
 
 **使用資料：** `containers`（容器即時資源數據）
 
+## 資料來源
+
+Notebook 直接從 Google Sheets 抓取真實資料（透過公開 CSV 匯出）：
+- **工作表1**：SSH 登入紀錄（時間 / 使用者 / IP位置）
+- **容器進入紀錄**：容器進入紀錄（時間 / 使用者 / 容器ID）
+
+不使用假資料，所有統計、預測、模擬的基準值皆來自真實歷史紀錄。
+
 ## 執行方式
 
 ```bash
-pip install numpy matplotlib ipywidgets
+pip install numpy matplotlib ipywidgets pandas
 jupyter notebook phase3_analysis.ipynb
 ```
 
